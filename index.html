@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIエージェント人事部 — 採用計画と自動配置（デモ）</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#fff; --line:#e3e6ee; --ink:#1d2433; --ink2:#5a6275; --muted:#8a91a3; --blue:#2a78d6; --blue-soft:#e8f0fb; --blue-line:#b9d2f1;
+          --good:#0ca30c; --good-text:#006300; --warn:#fab219; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Yu Gothic UI","Hiragino Sans","Noto Sans JP",sans-serif; }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:14px 28px; display:flex; align-items:center; gap:14px; position:sticky; top:0; z-index:5; }
+  .logo { font-weight:800; font-size:19px; display:flex; align-items:center; gap:8px; }
+  .logo .dot { width:28px; height:28px; border-radius:8px; background:var(--blue-soft); border:1px solid var(--blue-line); display:grid; place-items:center; }
+  .steps { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+  .steps span { font-size:13px; padding:6px 12px; border-radius:999px; color:var(--muted); background:#f0f2f7; }
+  .steps span.on { background:var(--blue); color:#fff; font-weight:700; }
+  .steps span.done { background:var(--blue-soft); color:var(--blue); }
+  main { max-width:1180px; margin:0 auto; padding:26px 24px 60px; }
+  section { display:none; } section.on { display:block; animation:fade .35s; }
+  @keyframes fade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  h1 { font-size:26px; margin:0 0 6px; } .lead { color:var(--ink2); margin:0 0 20px; font-size:15px; line-height:1.6; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  label { font-weight:700; font-size:14px; display:block; margin:16px 0 6px; }
+  textarea, input[type=text] { width:100%; border:1px solid var(--line); border-radius:10px; padding:12px; font:inherit; font-size:14.5px; background:#fbfcfe; }
+  textarea { min-height:110px; resize:vertical; line-height:1.6; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1px solid var(--line); background:#fff; border-radius:999px; padding:7px 14px; font:inherit; font-size:13.5px; cursor:pointer; color:var(--ink2); }
+  .chip[aria-pressed="true"] { background:var(--blue-soft); border-color:var(--blue-line); color:var(--blue); font-weight:700; }
+  .presets { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .preset { font-size:12.5px; border:1px dashed var(--blue-line); color:var(--blue); background:#fff; border-radius:8px; padding:5px 10px; cursor:pointer; }
+  .btn { background:var(--blue); color:#fff; border:0; border-radius:12px; padding:13px 22px; font:inherit; font-weight:800; font-size:15px; cursor:pointer; }
+  .btn.ghost { background:#fff; color:var(--ink2); border:1px solid var(--line); font-weight:600; }
+  .bar { display:flex; gap:10px; justify-content:flex-end; margin-top:22px; align-items:center; }
+  .thinking { display:none; align-items:center; gap:10px; color:var(--ink2); font-size:14px; }
+  .spin { width:18px; height:18px; border:3px solid var(--blue-soft); border-top-color:var(--blue); border-radius:50%; animation:sp 0.8s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  /* task analysis */
+  .dept { margin-bottom:16px; }
+  .dept h3 { margin:0 0 10px; font-size:16px; display:flex; gap:8px; align-items:center; }
+  .task { display:grid; grid-template-columns: 1fr 150px 110px; gap:12px; align-items:center; padding:9px 0; border-top:1px solid var(--line); font-size:14px; }
+  .task .lvl { display:flex; gap:3px; } .task .lvl i { width:22px; height:8px; border-radius:4px; background:#e9ecf3; } .task .lvl i.f { background:var(--blue); }
+  .task .h { text-align:right; color:var(--ink2); font-variant-numeric:tabular-nums; }
+  .sum { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:18px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; } .stat .v { font-size:30px; font-weight:800; } .stat .l { font-size:13px; color:var(--ink2); }
+
+  /* org chart */
+  .org { display:flex; flex-direction:column; align-items:center; }
+  .node-top { text-align:center; padding:6px 0 0; } .node-top .ic { font-size:22px; } .node-top b { font-size:18px; display:block; }
+  .vline { width:1px; height:26px; background:var(--line); }
+  .hr { background:var(--blue-soft); border:1px solid var(--blue-line); border-radius:16px; padding:14px 40px; text-align:center; }
+  .hr b { font-size:20px; display:block; } .hr span { font-size:12.5px; color:var(--ink2); }
+  .depts { display:grid; gap:16px; width:100%; margin-top:0; position:relative; padding-top:26px; }
+  .depts::before { content:""; position:absolute; top:0; left:12%; right:12%; height:1px; background:var(--line); }
+  .dcol { position:relative; } .dcol::before { content:""; position:absolute; top:-26px; left:50%; width:1px; height:26px; background:var(--line); }
+  .dcol h4 { text-align:center; margin:0 0 10px; font-size:15px; }
+  .agent { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin-bottom:10px; cursor:pointer; transition:transform .15s, box-shadow .15s; position:relative; }
+  .agent:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(29,36,51,.08); }
+  .agent .t { font-weight:800; font-size:14.5px; display:flex; align-items:center; gap:6px; }
+  .agent .d { color:var(--ink2); font-size:12.5px; margin-top:4px; line-height:1.5; }
+  .agent .m { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .tag { font-size:11.5px; padding:2px 8px; border-radius:999px; background:#f0f2f7; color:var(--ink2); }
+  .tag.p1 { background:#fff4d9; color:#7a5300; } .tag.on { background:#e5f6e5; color:var(--good-text); }
+  .agent.pick { background:var(--blue-soft); border:2px solid var(--blue); }
+  .agent.skip { background:#f6f7fa; border:2px dashed #c9ced9; opacity:.6; }
+  .agent.skip .t { text-decoration:line-through; text-decoration-color:#9aa1b2; }
+  .agent .sel { position:absolute; top:10px; right:12px; font-size:11.5px; font-weight:800; padding:2px 8px; border-radius:999px; }
+  .agent.pick .sel { background:var(--blue); color:#fff; } .agent.skip .sel { background:#e3e6ee; color:var(--ink2); }
+  .agent .jdbtn { margin-top:8px; font-size:12px; border:1px solid var(--line); background:#fff; border-radius:8px; padding:4px 9px; cursor:pointer; color:var(--ink2); }
+  .picksum { display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:14px; margin:0 0 12px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 14px; }
+  .picksum b { font-size:18px; }
+  .agent.hired { border-color:#9fd89f; } .agent.hired::after { content:"✔ 配置済み"; position:absolute; top:10px; right:12px; font-size:11.5px; font-weight:800; color:var(--good-text); }
+  .agent.pop { animation:pop .45s; } @keyframes pop { 0% { transform:scale(.92); opacity:.2; } 100% { transform:none; opacity:1; } }
+
+  /* drawer */
+  .drawer { position:fixed; top:0; right:0; bottom:0; width:min(460px, 96vw); background:#fff; border-left:1px solid var(--line); box-shadow:-10px 0 30px rgba(29,36,51,.10); padding:22px; overflow:auto; transform:translateX(105%); transition:transform .25s; z-index:20; }
+  .drawer.on { transform:none; }
+  .drawer h3 { margin:0 0 4px; font-size:20px; } .drawer .x { position:absolute; top:14px; right:16px; border:0; background:#f0f2f7; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  .jd h5 { margin:14px 0 6px; font-size:13px; color:var(--muted); }
+  .jd ul { margin:0; padding-left:1.1em; font-size:14px; line-height:1.7; }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px; font-size:12px; overflow:auto; line-height:1.5; }
+
+  /* day timeline */
+  .day { position:relative; margin-top:6px; }
+  .slot { display:grid; grid-template-columns:64px 1fr; gap:14px; padding:10px 0; border-top:1px solid var(--line); font-size:14px; align-items:start; }
+  .slot .time { font-weight:800; color:var(--blue); font-variant-numeric:tabular-nums; }
+  .flow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .pill { background:#f0f2f7; border-radius:999px; padding:4px 10px; font-size:13px; } .pill.ai { background:var(--blue-soft); color:var(--blue); font-weight:700; } .pill.human { background:#fff4d9; color:#7a5300; font-weight:700; }
+  .two { display:grid; grid-template-columns: 1.25fr 1fr; gap:16px; }
+  table.ev { width:100%; border-collapse:collapse; font-size:13.5px; }
+  table.ev th, table.ev td { padding:9px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  table.ev th { color:var(--muted); font-weight:600; font-size:12.5px; }
+  table.ev td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .verdict { display:inline-flex; gap:5px; align-items:center; font-weight:800; font-size:12.5px; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .v-keep { background:#e5f6e5; color:var(--good-text); } .v-move { background:#fff4d9; color:#7a5300; } .v-end { background:#fde7e7; color:#a02727; } .v-na { background:#f0f2f7; color:var(--ink2); }
+  .ab { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px; }
+  .ab .side { border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .ab .side.win { border-color:#9fd89f; }
+  .kv { display:grid; grid-template-columns:1fr auto; gap:4px 10px; font-size:13.5px; margin-top:8px; }
+  .kv span:nth-child(even) { text-align:right; font-variant-numeric:tabular-nums; font-weight:700; }
+  .memo { border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:12px; background:#fff; }
+  .memo h4 { margin:0 0 6px; font-size:15px; } .memo dl { display:grid; grid-template-columns:5.5em 1fr; gap:4px 10px; font-size:13.5px; margin:8px 0 0; } .memo dt { color:var(--muted); } .memo dd { margin:0; }
+  .feed { display:flex; flex-direction:column; gap:10px; }
+  .fitem { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; }
+  .fitem .who { font-size:12.5px; color:var(--blue); font-weight:700; }
+  .fitem .what { font-weight:800; font-size:14.5px; margin-top:2px; }
+  .fitem .res { color:var(--ink2); font-size:13px; margin-top:4px; line-height:1.5; }
+  .fitem .when { color:var(--muted); font-size:12px; margin-top:4px; }
+  .rate { display:flex; gap:8px; }
+  .rate button { border:1px solid var(--line); background:#fff; border-radius:10px; padding:9px 12px; font:inherit; font-size:14px; cursor:pointer; color:var(--ink2); min-width:96px; }
+  .rate button[aria-pressed="true"].up { background:#e5f6e5; border-color:#9fd89f; color:var(--good-text); font-weight:800; }
+  .rate button[aria-pressed="true"].down { background:#fde7e7; border-color:#f2b3b3; color:#a02727; font-weight:800; }
+  .uscore { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .meter2 { display:inline-block; width:60px; height:6px; border-radius:3px; background:#e9ecf3; vertical-align:middle; margin-left:6px; position:relative; overflow:hidden; }
+  .meter2 i { position:absolute; left:0; top:0; bottom:0; background:var(--good); }
+  .aij { margin-top:8px; font-size:12.5px; background:var(--blue-soft); border-radius:8px; padding:6px 10px; color:var(--ink); }
+  .aij b { color:var(--blue); }
+  .rate button:disabled { cursor:default; opacity:.55; }
+  .src { font-size:11px; color:var(--muted); display:block; text-align:center; margin-top:4px; }
+  .ai { background:var(--blue-soft); border:1px solid var(--blue-line); border-left:4px solid var(--blue); border-radius:10px; padding:12px 14px; font-size:14px; line-height:1.7; margin-bottom:14px; }
+  .st { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:800; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+  .st.ok { background:#e5f6e5; color:var(--good-text); } .st.wait { background:#fff4d9; color:#7a5300; } .st.err { background:#fde7e7; color:#a02727; } .st.idle { background:#f0f2f7; color:var(--ink2); }
+  .todo { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:13.5px; }
+  .todo b { display:block; margin-bottom:2px; }
+  .tl { display:grid; grid-template-columns:8.5em 1fr; gap:6px 8px; align-items:center; font-size:12.5px; }
+  .tl .lane { position:relative; height:14px; background:#f0f2f7; border-radius:7px; }
+  .tl .lane i { position:absolute; top:2px; bottom:2px; border-radius:5px; background:var(--blue); }
+  .tl .axis { grid-column:2; display:flex; justify-content:space-between; color:var(--muted); font-size:11px; }
+  .trend.up { color:var(--good-text); font-weight:800; } .trend.down { color:#a02727; font-weight:800; }
+  .roi { font-variant-numeric:tabular-nums; font-weight:800; } .roi.low { color:#a02727; }
+  #mchart svg rect.b { fill:var(--blue); } #mchart svg rect.b:hover { fill:#1c5fb0; } #mchart svg rect.w { fill:#c9d8ee; }
+  #mchart svg text { font-size:11px; fill:#8a91a3; }
+  .flash { animation:flash 1s; } @keyframes flash { 0% { background:#fff8db; } 100% { background:transparent; } }
+  .done-stamp { font-weight:800; font-size:13px; }
+  body.on-lp main, body.on-lp .steps, body.on-lp #jumpcto { display:none; }
+  body:not(.on-lp) #lp { display:none; }
+  .logo { cursor:pointer; }
+  #lp { max-width:1120px; margin:0 auto; padding:0 24px 60px; }
+  .hero { display:grid; grid-template-columns: 1.1fr 1fr; gap:36px; align-items:center; padding:56px 0 40px; }
+  .hero h1 { font-size:40px; line-height:1.3; margin:0 0 16px; letter-spacing:.01em; }
+  .hero h1 em { font-style:normal; color:var(--blue); }
+  .hero p { font-size:17px; color:var(--ink2); line-height:1.8; margin:0 0 26px; }
+  .hero .cta { display:flex; gap:12px; flex-wrap:wrap; }
+  .hero .note { font-size:12.5px; color:var(--muted); margin-top:12px; }
+  .mini-org { background:#fff; border:1px solid var(--line); border-radius:20px; padding:22px; box-shadow:0 20px 50px rgba(42,120,214,.10); }
+  .mini-org .top { text-align:center; font-weight:800; font-size:14px; }
+  .mini-org .hrb { margin:12px auto; width:70%; text-align:center; background:var(--blue-soft); border:1px solid var(--blue-line); border-radius:12px; padding:10px; font-weight:800; }
+  .mini-org .row3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
+  .mini-org .ag { border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; text-align:center; background:#fff; }
+  .mini-org .ag b { display:block; font-size:12.5px; }
+  .lp-sec { padding:40px 0 10px; }
+  .lp-sec h2 { font-size:26px; margin:0 0 6px; text-align:center; }
+  .lp-sec .sub { text-align:center; color:var(--ink2); margin:0 0 26px; }
+  .g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+  .g4 { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .pain, .feat, .price { background:#fff; border:1px solid var(--line); border-radius:16px; padding:20px; }
+  .pain .q { font-size:28px; } .pain b, .feat b { display:block; font-size:16px; margin:8px 0 6px; }
+  .pain p, .feat p { margin:0; color:var(--ink2); font-size:14px; line-height:1.7; }
+  .how { text-align:center; } .how .n { width:36px; height:36px; border-radius:50%; background:var(--blue); color:#fff; display:grid; place-items:center; font-weight:800; margin:0 auto 10px; }
+  .how b { display:block; } .how p { color:var(--ink2); font-size:13.5px; margin:6px 0 0; line-height:1.6; }
+  .proof { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; background:linear-gradient(135deg,#2a78d6,#1c5fb0); color:#fff; border-radius:20px; padding:26px; }
+  .proof .v { font-size:34px; font-weight:800; } .proof .l { opacity:.9; font-size:13.5px; }
+  .price.pop { border:2px solid var(--blue); position:relative; }
+  .price .tag2 { position:absolute; top:-12px; left:50%; transform:translateX(-50%); background:var(--blue); color:#fff; font-size:12px; font-weight:800; padding:3px 10px; border-radius:999px; }
+  .price h3 { margin:0; font-size:18px; } .price .yen { font-size:30px; font-weight:800; margin:8px 0; } .price .yen small { font-size:13px; color:var(--muted); font-weight:500; }
+  .price ul { padding-left:1.1em; color:var(--ink2); font-size:14px; line-height:1.9; margin:8px 0 14px; }
+  .faq details { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+  .faq summary { font-weight:800; cursor:pointer; } .faq p { color:var(--ink2); margin:8px 0 0; line-height:1.7; font-size:14px; }
+  .final { text-align:center; padding:46px 20px; background:var(--blue-soft); border-radius:24px; margin-top:40px; }
+  .final h2 { margin:0 0 10px; font-size:26px; }
+  @media (max-width: 900px) { .hero, .g3, .g4, .proof { grid-template-columns:1fr; } .hero h1 { font-size:30px; } }
+  footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
+  @media (max-width: 860px) { .two, .sum { grid-template-columns:1fr; } .task { grid-template-columns:1fr 90px 70px; } }
+</style>
+</head>
+<body class="on-lp">
+<header>
+  <div class="logo"><span class="dot">🤖</span>AIエージェント人事部</div>
+  <div class="steps" id="steps"><span>1 会社のこと</span><span>2 業務の棚卸し</span><span>3 採用計画</span><span>4 自動配置</span><span>5 デイリー</span><span>6 マンスリー</span><span>7 タスクの評価</span><span>8 人事評価</span><span>9 CTO AI</span></div>
+  <button class="btn ghost" id="jumpcto" style="padding:7px 12px;font-size:13px">CTO AI だけ見る</button>
+</header>
+<div id="lp">
+  <div class="hero" style="display:grid">
+    <div>
+      <h1>AI 社員の<em>採用から評価まで</em>、<br>AIエージェント人事部におまかせ。</h1>
+      <p>「どんな AI エージェントがいれば、うちの会社は回るんだろう？」<br>会社のことを入力するだけで、必要な AI 社員を提案し、そのまま配置。<br>毎日の働きぶりと費用対効果を見える化し、育成・配置換えまで支えます。</p>
+      <div class="cta"><button class="btn" data-start="1">無料で試してみる（デモ） →</button><button class="btn ghost" data-scroll="lp-how">しくみを見る</button></div>
+      <div class="note">登録不要 ／ 3 分で採用計画ができます</div>
+    </div>
+    <div class="mini-org" aria-hidden="true">
+      <div class="top">👤 経営者・人間の管理者</div>
+      <div class="hrb">🤖 AIエージェント人事部<br><span style="font-weight:500;font-size:12px;color:var(--ink2)">採用・配置・評価・育成</span></div>
+      <div class="row3"><div class="ag"><b>💼 営業部</b>顧客調査AI<br>営業資料AI</div><div class="ag"><b>📣 マーケ部</b>競合調査AI<br>SNS運用AI</div><div class="ag"><b>🛠️ 開発部</b>CTO AI<br>開発チーム 8 体</div></div>
+    </div>
+  </div>
+
+  <div class="lp-sec">
+    <h2>こんなこと、ありませんか？</h2><p class="sub">AI を使う会社は増えたのに、「AI でチームを組む」のはまだ難しい</p>
+    <div class="g3">
+      <div class="pain"><div class="q">🤔</div><b>何を AI に任せればいいかわからない</b><p>ChatGPT は使っている。でも、どの仕事を、どんな AI に、どこまで任せていいのかが決められない。</p></div>
+      <div class="pain"><div class="q">🧩</div><b>複数の AI が動く姿をイメージできない</b><p>「AI エージェントでチームを組む」と言われても、誰が何をして、人はどこで判断するのかが見えない。</p></div>
+      <div class="pain"><div class="q">😵</div><b>AI が作ったものに理解が追いつかない</b><p>Claude Code などで開発はどんどん進む。でも中身がわからず、方針を相談できる相手もいない。</p></div>
+    </div>
+  </div>
+
+  <div class="lp-sec" id="lp-how">
+    <h2>AIエージェント人事部のしくみ</h2><p class="sub">人の会社と同じように、AI 社員も「採用 → 配置 → 評価 → 育成」</p>
+    <div class="g4">
+      <div class="how"><div class="n">1</div><b>業務の棚卸し</b><p>会社の説明・部署・ツールから、AI に任せやすい仕事と浮く時間を見つける</p></div>
+      <div class="how"><div class="n">2</div><b>採用計画</b><p>必要な AI 社員を組織図で提案。任せること・承認・させないことまで決める</p></div>
+      <div class="how"><div class="n">3</div><b>自動配置</b><p>働く場所・タイミング・報告先つきで配置。最初の 2 週間は試用期間</p></div>
+      <div class="how"><div class="n">4</div><b>評価と育成</b><p>デイリー・マンスリーで見える化。いいね評価と費用対効果で、配置換えを提案</p></div>
+    </div>
+  </div>
+
+  <div class="lp-sec">
+    <h2>できること</h2><p class="sub">人がやるのは「朝の 3 行を読む」「承認がいる所だけ判断する」の 2 つだけ</p>
+    <div class="g3">
+      <div class="feat"><b>📋 採用計画</b><p>おすすめの AI 社員を部署ごとに提案。カードを押して採用・見送りを選ぶだけ。</p></div>
+      <div class="feat"><b>⚙️ 自動配置</b><p>Slack や GitHub など、いつものツールに AI 社員を配置。チームの 1 日の動きが見える。</p></div>
+      <div class="feat"><b>📊 デイリー／マンスリー</b><p>稼働・結果・人が見ることを毎日 1 枚に。月末には費用対効果と来月の提案。</p></div>
+      <div class="feat"><b>👍 タスクの評価</b><p>使った人の「いいね／イマイチ」と、AIエージェント人事部長の自動評価を組み合わせて記録。</p></div>
+      <div class="feat"><b>🧾 人事評価とお伺い</b><p>合格 1 件あたりのコストと品質で評価。配置換えや契約終了は、人に伺ってから。</p></div>
+      <div class="feat"><b>🧭 CTO AI</b><p>AI が並行して進めた開発を、毎朝わかる言葉で解説。開発方針の相談相手にも。</p></div>
+    </div>
+  </div>
+
+  <div class="lp-sec">
+    <div class="proof"><div><div class="v">月 116 時間</div><div class="l">浮いた時間（8 体を配置した場合の試算）</div></div><div><div class="v">7.9 倍</div><div class="l">利用料に対する費用対効果（試算）</div></div><div><div class="v">2 つだけ</div><div class="l">人がやること（3 行を読む・判断する）</div></div></div>
+  </div>
+
+  <div class="lp-sec">
+    <h2>料金（例）</h2><p class="sub">AI 社員の利用料（AI モデルの費用）は別途、使った分だけ</p>
+    <div class="g3">
+      <div class="price"><h3>フリー</h3><div class="yen">¥0<small> / 月</small></div><ul><li>AI 社員 3 体まで</li><li>採用計画・自動配置</li><li>デイリーレポート</li></ul><button class="btn ghost" data-start="1">デモを試す</button></div>
+      <div class="price pop"><span class="tag2">おすすめ</span><h3>スタンダード</h3><div class="yen">¥9,800<small> / 月</small></div><ul><li>AI 社員 15 体まで</li><li>マンスリーレポート・人事評価</li><li>CTO AI</li></ul><button class="btn" data-start="1">デモを試す</button></div>
+      <div class="price"><h3>ビジネス</h3><div class="yen">要相談</div><ul><li>AI 社員の数は無制限</li><li>部署ごとの権限と監査ログ</li><li>導入の伴走</li></ul><button class="btn ghost" data-start="1">デモを試す</button></div>
+    </div>
+  </div>
+
+  <div class="lp-sec faq">
+    <h2>よくある質問</h2><p class="sub">&nbsp;</p>
+    <details><summary>AI が勝手に解雇したり、大事なことを決めたりしませんか？</summary><p>しません。AIエージェント人事部は候補を出して人に伺うだけです。「人が判断（AI の判断を参照）」と「AI が判断」は会社ごとに選べ、止めた記録も残ります。解雇は役割を止めて別の場所に移す形で、いつでも戻せます。</p></details>
+    <details><summary>どんな AI を使いますか？</summary><p>Claude や GPT など、仕事に合わせてモデルを選びます。同じ仕事を 2 つのモデルにさせて、合格 1 件あたりのコストで比べることもできます。</p></details>
+    <details><summary>エンジニアがいなくても使えますか？</summary><p>使えます。会社の説明を入力して、提案された AI 社員を選ぶだけで配置できます。開発チームがある会社は、CTO AI が開発の中身を解説します。</p></details>
+  </div>
+
+  <div class="final"><h2>あなたの会社の AI 社員チームを、3 分でつくってみよう</h2><p style="color:var(--ink2);margin:0 0 18px">会社のことを入れるだけ。登録はいりません。</p><button class="btn" data-start="1">無料で試してみる（デモ） →</button></div>
+</div>
+<main>
+  <!-- 1. input -->
+  <section id="s1" class="on">
+    <h1>あなたの会社に、どんな AI 社員がいるといい？</h1>
+    <p class="lead">会社のことを少し教えてください。AIエージェント人事部が業務を棚卸しして、必要な AI 社員を提案し、そのまま配置します。</p>
+    <div class="card">
+      <div class="presets"><span style="font-size:12.5px;color:var(--muted)">例を入れる:</span>
+        <button class="preset" data-p="startup">地方の SaaS スタートアップ</button>
+        <button class="preset" data-p="shop">小売・EC の会社</button>
+        <button class="preset" data-p="agency">受託開発の会社</button></div>
+      <label for="desc">どんな会社？（事業・お客さん・いま困っていること）</label>
+      <textarea id="desc" placeholder="例: 高知で中小企業向けの SaaS を作っている 8 人のスタートアップ。営業は社長が兼務。競合や新しいスタートアップの動きを追えていない…"></textarea>
+      <label>部署</label>
+      <div class="chips" id="depts"></div>
+      <label>使っているツール</label>
+      <div class="chips" id="tools"></div>
+      <div class="bar"><div class="thinking" id="th1"><span class="spin"></span>業務を読み解いています…</div><button class="btn" id="go1">業務を棚卸しする →</button></div>
+    </div>
+  </section>
+
+  <!-- 2. task analysis -->
+  <section id="s2">
+    <h1>業務の棚卸し</h1>
+    <p class="lead">部署ごとの業務と、AI に任せやすいかどうか、月に浮きそうな時間の見込みです（デモの試算）。</p>
+    <div class="sum" id="sum"></div>
+    <div class="card" id="tasks"></div>
+    <div class="bar"><button class="btn ghost" data-back="s1">← 戻る</button><button class="btn" id="go2">採用計画をつくる →</button></div>
+  </section>
+
+  <!-- 3. plan (org chart) -->
+  <section id="s3">
+    <h1>採用計画 — おすすめの AI 社員</h1>
+    <p class="lead">任せやすくて効果が大きい業務から、AI 社員を提案しました。<b>カードを押すと「採用する／見送る」を切り替えられます。</b>「職務定義を見る」で、任せること・人の承認がいること・させないことを確認できます。</p>
+    <div class="picksum" id="picksum"></div>
+    <div class="card"><div class="org" id="org"></div></div>
+    <div class="bar"><button class="btn ghost" data-back="s2">← 戻る</button><button class="btn" id="go3">この計画で採用・配置する →</button></div>
+  </section>
+
+  <!-- 4. deploy -->
+  <section id="s4">
+    <h1>自動配置 — AI 社員が働き始めました</h1>
+    <p class="lead">それぞれの AI 社員を、働く場所・報告先・動くタイミングつきで配置しました。最初の 2 週間は試用期間です。</p>
+    <div class="sum" id="sum4"></div>
+    <div class="two">
+      <div class="card"><b>AI 社員チームの 1 日</b><div class="day" id="day"></div></div>
+      <div class="card"><b>人がやること</b>
+        <ul style="line-height:1.9;font-size:14.5px;padding-left:1.1em">
+          <li>朝、AIエージェント人事部の<b>3 行の要約</b>を読む</li>
+          <li>「承認がいる」と言われた所だけ判断する</li>
+          <li>2 週間後、試用期間の評価を見て<b>本採用・配置換え</b>を決める</li>
+        </ul>
+        <div style="margin-top:14px"><b>配置の設定（書き出し）</b><p class="lead" style="font-size:13px;margin:4px 0 8px">Cockpit のクルーや Claude Code のサブエージェントに、そのまま読み込める形の例です。</p><pre id="yaml"></pre></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px"><b>同じ仕事を 2 体で比べる（A・B）</b>
+      <p class="lead" style="font-size:13.5px;margin:4px 0 0">開発チームの「バックエンド実装」は、同じ作業を A（sonnet）と B（haiku）の 2 体に渡し、レビュー・テスト・セキュリティを通った成果だけで比べます。</p>
+      <div class="ab">
+        <div class="side"><b>A ／ sonnet</b><div class="kv"><span>合格率</span><span>92%</span><span>一度で通った率</span><span>75%</span><span>やり直し（平均）</span><span>0.4 回</span><span>合格 1 件あたりのトークン</span><span>84,000</span></div></div>
+        <div class="side win"><b>B ／ haiku</b> <span class="verdict v-keep">✔ 定型作業はこっち</span><div class="kv"><span>合格率</span><span>83%</span><span>一度で通った率</span><span>58%</span><span>やり直し（平均）</span><span>0.9 回</span><span>合格 1 件あたりのトークン</span><span>41,000</span></div></div>
+      </div>
+      <p class="lead" style="font-size:13px;margin:10px 0 0">B はやり直しが多いのに、合格 1 件あたりでは A の半分。→ 定型の作業は B、難しい作業は A に振り分ける（12 件ずつの試算・デモの値）</p></div>
+    <div class="card" style="margin-top:16px"><div class="org" id="org4"></div></div>
+    <div class="bar"><button class="btn ghost" data-back="s3">← 計画に戻る</button><button class="btn ghost" id="restart">↺ 別の会社で試す</button><button class="btn" id="go4">今日のデイリーレポートへ →</button></div>
+  </section>
+
+
+
+  <!-- 5. daily report -->
+  <section id="s5">
+    <h1 id="dtitle">デイリーレポート</h1>
+    <p class="lead">AI 社員それぞれの今日の稼働と結果を、AIエージェント人事部が 1 枚にまとめます。人は上の「3 行まとめ」と「人が見ること」だけ読めば OK です。</p>
+    <div class="ai" id="dsum3"></div>
+    <div class="sum" id="dstats"></div>
+    <div class="two">
+      <div class="card"><b>AI 社員ごとの稼働</b><table class="ev" id="dtable" style="margin-top:8px"></table></div>
+      <div class="card"><b>人が見ること</b><div id="dtodo" style="margin-top:8px"></div>
+        <div style="margin-top:16px"><b>今日の稼働（時間帯）</b><div id="dtl" style="margin-top:8px"></div></div></div>
+    </div>
+    <div class="bar"><button class="btn ghost" data-back="s4">← 配置に戻る</button><button class="btn" id="go45">今月のマンスリーレポートへ →</button></div>
+  </section>
+
+  <!-- 6. monthly report -->
+  <section id="s6">
+    <h1 id="mtitle">マンスリーレポート</h1>
+    <p class="lead">1 か月分のデイリーレポートを AIエージェント人事部がまとめます。AI 社員にかけたお金に見合う働きだったか（費用対効果）と、来月の人員の提案までを 1 枚で。</p>
+    <div class="ai" id="msum"></div>
+    <div class="sum" id="mstats" style="grid-template-columns:repeat(4,1fr)"></div>
+    <div class="card"><b>毎日の完了タスク数</b><span style="color:var(--muted);font-size:12.5px">（棒に乗せると日付と件数）</span><div id="mchart" style="margin-top:10px"></div></div>
+    <div class="two" style="margin-top:16px">
+      <div class="card"><b>AI 社員ごとの 1 か月</b><table class="ev" id="mtable" style="margin-top:8px"></table>
+        <p class="lead" style="font-size:12px;margin:8px 0 0">費用対効果 = 浮いた時間 × 時給 3,000 円 ÷ 利用料。1.0 倍を超えると元が取れている</p></div>
+      <div class="card"><b>AIエージェント人事部からの来月の提案</b><div id="mplan" style="margin-top:8px"></div>
+        <div style="margin-top:16px"><b>人の判断がいった回数</b><div id="mhuman" style="margin-top:8px"></div></div></div>
+    </div>
+    <div class="bar"><button class="btn ghost" data-back="s5">← デイリーレポートに戻る</button><button class="btn" id="go56">タスクの評価へ →</button></div>
+  </section>
+
+  <!-- 7. task feedback -->
+  <section id="s7">
+    <h1>タスクの評価 — 使った人が「いいね／イマイチ」</h1>
+    <p class="lead">AI 社員がタスクを終えるたびに評価します。頼んだ人のワンタップ評価に加えて、AIエージェント人事部長が受け入れ条件や成果をもとに自動で評価することもできます。どちらも人事評価の材料になります。</p>
+    <div class="row" style="margin:0 0 14px"><span style="font-size:13px;color:var(--ink2)">評価のしかた:</span>
+      <span class="chips" id="fmode"><button class="chip" data-m="human" aria-pressed="true">👤 人が評価</button><button class="chip" data-m="both" aria-pressed="false">👤＋🤖 AI の評価を参考に人が直す</button><button class="chip" data-m="ai" aria-pressed="false">🤖 AIエージェント人事部長が自動評価</button></span></div>
+    <div class="sum" id="fsum"></div>
+    <div class="feed" id="feed"></div>
+    <div class="bar"><button class="btn ghost" data-back="s6">← マンスリーレポートに戻る</button><button class="btn" id="go6">人事評価へ →</button></div>
+  </section>
+
+  <!-- 8. evaluation -->
+  <section id="s8">
+    <h1>人事評価とお伺い — 試用 2 週間のふり返り</h1>
+    <p class="lead">トークンの量だけでは評価しません。<b>合格した成果 1 件あたりのトークン</b>（やり直し・失敗の分も含む）と品質・速度、<b>使った人の「いいね率」</b>で比べ、件数が少ないものは「判定不可」にします。AIエージェント人事部長 は候補を出すだけで、決めるのは人です。</p>
+    <div class="row" style="margin-bottom:12px"><span style="font-size:13px;color:var(--ink2)">最後の判断:</span>
+      <span class="chips" id="evmode"><button class="chip" data-m="h" aria-pressed="true">人が判断（AI の判断を参照）</button><button class="chip" data-m="a" aria-pressed="false">AI が判断</button></span></div>
+    <div class="card"><table class="ev" id="evtable"></table></div>
+    <h2 style="font-size:18px;margin:20px 0 4px">AIエージェント人事部長 からのお伺い</h2>
+    <div id="memos"></div>
+    <div class="bar"><button class="btn ghost" data-back="s7">← タスクの評価に戻る</button><button class="btn" id="go7">CTO AI の朝会へ →</button></div>
+  </section>
+
+  <!-- 9. CTO AI -->
+  <section id="s9">
+    <h1>CTO AI の朝会 — 昨日の開発、3 分でわかる</h1>
+    <p class="lead">Claude Code の AI たちが並行して進めた開発を、CTO AI が読み込んで、要点・理由・リスク・次の方針を説明します。わからない所はそのまま相談できます。</p>
+    <div class="sum">
+      <div class="stat"><div class="v">23</div><div class="l">昨日の変更（コミット）</div></div>
+      <div class="stat"><div class="v">4 体</div><div class="l">並行して動いた開発 AI</div></div>
+      <div class="stat"><div class="v">2 件</div><div class="l">社長の判断がいること</div></div>
+    </div>
+    <div class="two">
+      <div class="card"><b>昨日の要点（わかる言葉で）</b>
+        <div class="slot"><span class="time">1</span><div><b>ログイン画面を作り直した</b><br><span style="color:var(--ink2);font-size:13.5px">Google アカウントでも入れるように。理由: 体験版の登録で 3 割が離脱していたため</span></div></div>
+        <div class="slot"><span class="time">2</span><div><b>データの保存先を 2 つに分けた</b><br><span style="color:var(--ink2);font-size:13.5px">お客さんのデータと分析用のデータを別にした。理由: 分析が重くなっても本体が遅くならないように</span></div></div>
+        <div class="slot"><span class="time">3</span><div><b>請求の画面はまだ途中</b><br><span style="color:var(--ink2);font-size:13.5px">2 体の AI が同じ所を別々に作っていた → 片方に寄せることを提案</span></div></div>
+        <div style="margin-top:12px"><b>⚠ 気になること</b><ul style="font-size:13.5px;line-height:1.8;padding-left:1.1em;margin:6px 0 0"><li>テストが書かれていない変更が 6 件</li><li>決済まわりのキーが設定ファイルに直接書かれかけていた（止めた）</li></ul></div>
+      </div>
+      <div class="card"><b>次の方針の提案（社長に相談）</b>
+        <div class="agent" style="cursor:default;margin-top:10px"><div class="t">案 A：今週は請求を仕上げる</div><div class="d">売上に直結。重なっていた 2 体を 1 体に寄せて、もう 1 体はテストを書く</div><div class="m"><span class="tag p1">★ CTO AI のおすすめ</span><span class="tag">3 日</span></div></div>
+        <div class="agent" style="cursor:default"><div class="t">案 B：先に分析画面を作る</div><div class="d">デモ映えする。ただ請求が遅れると、有料化が 2 週間ずれる</div><div class="m"><span class="tag">4 日</span></div></div>
+        <div style="margin-top:12px"><b>CTO AI に相談する</b>
+          <div class="chips" style="margin-top:8px" id="qs"></div>
+          <div id="answer" class="ai" style="margin-top:10px;display:none"></div></div>
+      </div>
+    </div>
+    <div class="bar"><button class="btn ghost" data-back="s8">← 人事評価に戻る</button><button class="btn ghost" data-back="s3">↺ 計画の更新へ</button></div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" aria-hidden="true"><button class="x" id="x">閉じる</button><div id="dbody"></div></aside>
+<footer>AIエージェント人事部 デモ（エージェンティックAI BootCamp@高知 チーム5）— 画面のみ。提案はキーワードにもとづく試算で、実際の AI は呼び出していません</footer>
+
+<script>
+// ---------------- catalog ----------------
+const DEPTS = { sales: ["💼", "営業部"], marketing: ["📣", "マーケ部"], admin: ["🗂️", "管理部"], dev: ["🛠️", "開発部"], cs: ["🎧", "カスタマーサポート"], exec: ["🧭", "経営企画"] };
+const TOOLS = ["Slack", "Discord", "Google Workspace", "Notion", "GitHub", "freee", "HubSpot", "Shopify", "X（Twitter）"];
+const AGENTS = [
+  { id: "cust", dept: "sales", name: "顧客調査AI", d: "商談前に、相手の会社の事業・ニュース・決裁者をまとめる", kw: ["営業", "商談", "顧客", "BtoB", "法人"], hours: 18, cost: 4000, place: "Slack #sales", when: "商談の 1 時間前", report: "営業担当", tools: ["Google Workspace", "HubSpot"],
+    allow: ["公開情報の調査", "商談メモの下書き"], approve: ["顧客への連絡"], never: ["顧客情報の社外持ち出し"] },
+  { id: "deck", dept: "sales", name: "営業資料AI", d: "相手に合わせて提案資料のたたき台を作る", kw: ["提案", "資料", "営業"], hours: 14, cost: 3000, place: "Google ドライブ", when: "依頼があった時", report: "営業担当", tools: ["Google Workspace"],
+    allow: ["資料の下書き", "過去資料の検索"], approve: ["顧客への送付"], never: ["価格の約束"] },
+  { id: "comp", dept: "marketing", name: "競合調査AI", d: "競合や新しいスタートアップの動きを毎日集め、自社との関係と機会を届ける", kw: ["競合", "スタートアップ", "市場", "動き", "調査", "追えて"], hours: 20, cost: 5000, place: "Slack #market-watch", when: "毎朝 8:00", report: "社長", tools: ["Slack", "Discord"],
+    allow: ["ニュース・資金調達・プレスの収集", "自社との関連の分析"], approve: ["社外への発信"], never: ["有料記事の転載"] },
+  { id: "sns", dept: "marketing", name: "SNS運用AI", d: "投稿案と予約、反応のふり返りまでを回す", kw: ["SNS", "発信", "X", "広報", "認知"], hours: 16, cost: 3500, place: "X・Slack #pr", when: "週 3 回", report: "広報担当", tools: ["X（Twitter）", "Slack"],
+    allow: ["投稿案の作成", "反応の集計"], approve: ["投稿の公開"], never: ["炎上しうる話題への言及"] },
+  { id: "inv", dept: "admin", name: "請求書処理AI", d: "届いた請求書を読み取り、会計ソフトへの登録を下書きする", kw: ["請求", "経理", "会計", "freee", "支払"], hours: 12, cost: 2500, place: "freee・メール", when: "請求書が届いた時", report: "管理担当", tools: ["freee", "Google Workspace"],
+    allow: ["請求書の読み取り", "仕訳の下書き"], approve: ["支払いの実行"], never: ["振込先の変更"] },
+  { id: "exp", dept: "admin", name: "経費分析AI", d: "毎月の経費とサブスクを見て、ムダと削減案を出す", kw: ["経費", "コスト", "サブスク", "削減"], hours: 6, cost: 2000, place: "Slack #admin", when: "毎月 1 日", report: "社長", tools: ["freee"],
+    allow: ["経費データの集計", "削減案の作成"], approve: ["契約の解約"], never: ["個人の給与情報の共有"] },
+  { id: "review", dept: "dev", name: "コードレビューAI", d: "プルリクエストを読み、気になる点と重点を人に説明する", kw: ["開発", "コード", "GitHub", "エンジニア", "SaaS", "並行"], hours: 22, cost: 6000, place: "GitHub", when: "プルリクエストが出た時", report: "CTO", tools: ["GitHub"],
+    allow: ["コードを読む", "レビューコメントの下書き"], approve: ["マージ"], never: ["本番へのデプロイ"] },
+  { id: "cto", dept: "dev", name: "CTO AI", d: "Claude Code などで進む開発の中身を、わかる言葉で解説し、開発方針を提案・相談に乗る", kw: ["開発", "Claude Code", "並行", "理解", "説明", "追いつ", "方針", "エージェント"], hours: 16, cost: 6000, place: "Slack #cto・GitHub", when: "毎朝 9:00（朝会）と相談したい時", report: "社長", tools: ["GitHub", "Slack"],
+    allow: ["コードと変更履歴を読む", "変更の要点を解説", "開発方針の提案"], approve: ["方針の決定", "大きな設計の変更"], never: ["コードを勝手に書き換える", "本番へのデプロイ"] },
+  { id: "faq", dept: "cs", name: "問い合わせAI", d: "問い合わせへの返事を社内資料から下書きし、担当者が確認して送る", kw: ["問い合わせ", "サポート", "顧客対応", "CS", "お客"], hours: 24, cost: 4500, place: "問い合わせ窓口", when: "問い合わせが来た時", report: "サポート担当", tools: ["Notion", "Google Workspace"],
+    allow: ["問い合わせを読む", "回答の下書き", "社内資料の検索"], approve: ["顧客への送信"], never: ["返金・解約の判断"] },
+  { id: "kpi", dept: "exec", name: "経営ダッシュボードAI", d: "売上・解約・パイプラインを毎週まとめ、変化と打ち手を 3 行で伝える", kw: ["経営", "売上", "KPI", "数字", "社長"], hours: 8, cost: 3000, place: "Slack #exec", when: "毎週月曜 9:00", report: "社長", tools: ["HubSpot", "freee", "Google Workspace"],
+    allow: ["数字の集計", "要約"], approve: [], never: ["数字の社外共有"] },
+  { id: "ec", dept: "sales", name: "商品ページAI", d: "商品説明と画像の代替文を作り、売れ筋に合わせて直す", kw: ["EC", "Shopify", "商品", "小売", "ネットショップ"], hours: 15, cost: 3500, place: "Shopify", when: "新商品の登録時", report: "EC担当", tools: ["Shopify"],
+    allow: ["商品説明の下書き"], approve: ["ページの公開"], never: ["価格の変更"] },
+];
+const DEVTEAM = { id: "devteam", dept: "dev", name: "開発チーム（7 役 8 体）", d: "仕様 → 実装（A・B の 2 体）→ レビュー → 合否 → セキュリティを、役割ごとの AI でつなぐ", kw: ["開発", "Claude Code", "並行", "SaaS", "GitHub", "エンジニア"], hours: 40, cost: 18000,
+  place: "GitHub・Claude Code", when: "タスクが積まれた時", report: "CTO AI", tools: ["GitHub"],
+  allow: ["受け入れ条件を書く", "実装（A・B で同じ仕事）", "レビュー・テスト・脆弱性調査"], approve: ["マージ", "リリース"], never: ["本番へのデプロイ", "秘密情報の書き込み"],
+  roles: [
+    ["受け入れ条件AI", "spec-acceptance-criteria", "sonnet", "「同じ成果」を決める合否の条件を書く"],
+    ["バックエンド実装AI・A", "dev-backend", "sonnet", "サーバー側の機能を実装（A）"],
+    ["バックエンド実装AI・B", "dev-backend", "haiku", "同じ仕事を安いモデルで（B）。A と比べる"],
+    ["コードレビューAI", "dev-code-reviewer", "sonnet", "不具合・保守性・設計との差を見つける"],
+    ["リリース判定AI", "qa-release-gate", "sonnet", "テスト結果と受け入れ条件から合否の案を出す"],
+    ["セキュリティ監査AI", "sec-code-auditor", "opus", "速いが危ない成果を高評価にしないための脆弱性調査"],
+    ["記録係AI（人事）", "hr-metrics-collector", "haiku", "作業・トークン・時間・結果を記録から集計"],
+    ["AIエージェント人事部長（人事）", "hr-director", "opus", "候補・理由・影響・戻し方をまとめて人に伺う（解雇はできない）"],
+  ] };
+const TASKS = {
+  sales: [["商談前の企業調査", 4, 10], ["提案資料づくり", 3, 12], ["商談メモの整理", 4, 6]],
+  marketing: [["競合・市場の情報収集", 5, 16], ["SNS の投稿づくり", 4, 10], ["イベント告知", 3, 4]],
+  admin: [["請求書の処理", 4, 8], ["経費のチェック", 3, 5], ["契約書の管理", 2, 4]],
+  dev: [["コードレビュー", 3, 14], ["仕様と変更の説明", 4, 8], ["テスト", 3, 10]],
+  cs: [["問い合わせ対応", 4, 20], ["FAQ の更新", 4, 6]],
+  exec: [["数字のまとめ", 4, 6], ["会議資料", 3, 5]],
+};
+const PRESETS = {
+  startup: { desc: "高知で中小企業向けの SaaS を作っている 8 人のスタートアップ。営業は社長が兼務。競合や新しいスタートアップの動きを追えていない。Claude Code で複数の AI エージェントを走らせて開発を進めているが、作られた中身の理解が追いつかず、開発方針を相談できる相手がいない。", depts: ["sales", "marketing", "dev", "admin"], tools: ["Slack", "GitHub", "Google Workspace", "freee"] },
+  shop: { desc: "地域の特産品を売る小売と EC の会社、従業員 15 人。Shopify のネットショップの商品ページ更新と、お客さんからの問い合わせ対応に追われている。SNS の発信も続かない。", depts: ["sales", "marketing", "cs", "admin"], tools: ["Shopify", "X（Twitter）", "Google Workspace"] },
+  agency: { desc: "受託開発の会社、エンジニア 20 人。案件ごとの提案資料づくりと、コードレビューの負担が大きい。経営の数字を毎週まとめる時間がない。", depts: ["sales", "dev", "exec"], tools: ["GitHub", "Slack", "Notion", "HubSpot"] },
+};
+
+// ---------------- state & helpers ----------------
+const $ = s => document.querySelector(s);
+const sel = { depts: new Set(["sales", "marketing", "dev", "admin"]), tools: new Set(["Slack", "GitHub"]) };
+let plan = [], cands = [], chosen = new Set();
+function chipRow(el, items, set, label) {
+  el.innerHTML = items.map(([k, v]) => `<button class="chip" data-k="${k}" aria-pressed="${set.has(k)}">${v}</button>`).join("");
+  el.querySelectorAll(".chip").forEach(b => b.onclick = () => { set.has(b.dataset.k) ? set.delete(b.dataset.k) : set.add(b.dataset.k); b.setAttribute("aria-pressed", set.has(b.dataset.k)); });
+}
+function renderInputs() {
+  chipRow($("#depts"), Object.entries(DEPTS).map(([k, v]) => [k, v[0] + " " + v[1]]), sel.depts);
+  chipRow($("#tools"), TOOLS.map(t => [t, t]), sel.tools);
+}
+let reached = 1;
+function step(n) {
+  reached = Math.max(reached, n);
+  document.querySelectorAll("section").forEach((s, i) => s.classList.toggle("on", i === n - 1));
+  [...$("#steps").children].forEach((s, i) => { s.className = i === n - 1 ? "on" : i < reached ? "done" : ""; s.style.cursor = i < reached ? "pointer" : "default"; s.onclick = () => { if (i < reached) { if (i >= 4 && !plan.length) { makePlan(); } if (i === 2 && cands.length) renderPick(); if (i === 4) renderDaily(); if (i === 5) renderMonthly(); if (i === 6) renderFeed(); if (i === 7) renderEval(); if (i === 8) renderCTO(); step(i + 1); } }; });
+  scrollTo({ top: 0, behavior: "smooth" });
+}
+function score(a, text) {
+  let s = 1;
+  for (const k of a.kw) if (text.includes(k)) s += 2;
+  for (const t of a.tools) if (sel.tools.has(t)) s += 1;
+  return s;
+}
+function think(el, ms) { return new Promise(r => { el.style.display = "flex"; setTimeout(() => { el.style.display = "none"; r(); }, ms); }); }
+const yen = n => "¥" + n.toLocaleString();
+
+// ---------------- step 2 ----------------
+function renderTasks() {
+  const text = $("#desc").value;
+  const ds = [...sel.depts];
+  let total = 0, cnt = 0;
+  $("#tasks").innerHTML = ds.map(d => `<div class="dept"><h3>${DEPTS[d][0]} ${DEPTS[d][1]}</h3>${TASKS[d].map(([t, lv, h]) => {
+      const boost = AGENTS.some(a => a.dept === d && a.kw.some(k => text.includes(k)) && a.d.includes(t.slice(0, 2))) ? 1 : 0;
+      const L = Math.min(5, lv + boost); total += h; cnt++;
+      return `<div class="task"><span>${t}</span><span class="lvl" title="AI に任せやすさ ${L}/5" aria-label="AI に任せやすさ ${L}/5">${[1,2,3,4,5].map(i => `<i class="${i <= L ? "f" : ""}"></i>`).join("")}</span><span class="h">月 ${h} 時間</span></div>`; }).join("")}</div>`).join("");
+  $("#sum").innerHTML = `<div class="stat"><div class="v">${cnt}</div><div class="l">棚卸しした業務</div></div><div class="stat"><div class="v">${ds.length}</div><div class="l">部署</div></div><div class="stat"><div class="v">${total} 時間</div><div class="l">AI に任せると、月に浮きそうな時間（最大）</div></div>`;
+}
+
+// ---------------- step 3 ----------------
+function makePlan() {
+  const text = $("#desc").value;
+  plan = [];
+  for (const d of sel.depts) {
+    if (d === "dev") { const cto = AGENTS.find(a => a.id === "cto"); plan.push({ ...cto, prio: 1 }, { ...DEVTEAM, prio: 1 }); continue; }
+    const c = AGENTS.filter(a => a.dept === d).map(a => ({ ...a, s: score(a, text) })).sort((x, y) => y.s - x.s).slice(0, 2);
+    c.forEach((a, i) => plan.push({ ...a, prio: a.s >= 5 ? 1 : a.s >= 3 ? 2 : 3 }));
+  }
+  cands = plan.slice(); chosen = new Set(cands.map(a => a.id));
+}
+function renderPick() {
+  const on = cands.filter(a => chosen.has(a.id));
+  $("#picksum").innerHTML = `<span>採用する <b>${on.length}</b> 体</span><span>見送り <b>${cands.length - on.length}</b> 体</span><span>浮きそうな時間 <b>月 ${on.reduce((s, a) => s + a.hours, 0)} 時間</b></span><span>利用料の目安 <b>${yen(on.reduce((s, a) => s + a.cost, 0))}/月</b></span>`;
+  $("#org").innerHTML = orgHTML(false);
+  $("#go3").disabled = !on.length;
+}
+function orgHTML(hired) {
+  const ds = [...sel.depts].filter(d => !hired || plan.some(a => a.dept === d));
+  return `<div class="node-top"><div class="ic">👤</div><b>経営者・人間の管理者</b></div><div class="vline"></div>
+    <div class="hr"><div>🤖</div><b>AIエージェント人事部</b><span>AI社員の採用・配置・評価</span></div><div class="vline"></div>
+    <div class="depts" style="grid-template-columns:repeat(${ds.length},1fr)">${ds.map(d => `<div class="dcol"><h4>${DEPTS[d][0]} ${DEPTS[d][1]}</h4>${
+      (hired ? plan : cands).filter(a => a.dept === d).map(a => `<div class="agent ${hired ? "hired pop" : chosen.has(a.id) ? "pick" : "skip"}" data-id="${a.id}" tabindex="0" role="button" aria-pressed="${hired ? "" : chosen.has(a.id)}" aria-label="${hired ? a.name + " の職務定義を見る" : a.name + "：押すと採用する・見送るを切り替え"}">${hired ? "" : `<span class="sel">${chosen.has(a.id) ? "✔ 採用する" : "見送る"}</span>`}
+        <div class="t">🤖 ${a.name}${a.id === "cto" ? ' <span class="tag p1">参謀</span>' : ""}</div><div class="d">${a.d}</div>
+        <div class="m">${a.prio === 1 ? '<span class="tag p1">★ 優先</span>' : ""}<span class="tag">月 ${a.hours} 時間</span><span class="tag">${yen(a.cost)}/月</span>${hired ? `<span class="tag on">${a.when}</span>` : ""}</div>${hired ? "" : `<button class="jdbtn" data-jd="${a.id}">職務定義を見る</button>`}</div>`).join("")}</div>`).join("")}</div>`;
+}
+function openJD(id) {
+  const a = cands.find(x => x.id === id) || plan.find(x => x.id === id);
+  if (a.roles) {
+    $("#dbody").innerHTML = `<h3>🤖 ${a.name}</h3><p class="lead" style="margin:0">${a.d}</p>
+      <div class="jd"><h5>役割（Claude Code のサブエージェント形式）</h5>
+      <table class="ev"><thead><tr><th>役割</th><th>モデル</th></tr></thead><tbody>${a.roles.map(r => `<tr><td><b>${r[0]}</b><br><span style="color:var(--ink2);font-size:12.5px">${r[3]}</span></td><td>${r[2]}</td></tr>`).join("")}</tbody></table>
+      <h5>なぜこの形？</h5><ul><li>全 30 役を一度に作らず、7 役 8 体から始める</li><li>実装だけ A・B の 2 体にして、同じ仕事で比べられるようにする</li><li>人事部は候補を出すだけ。解雇（止める）は人が承認してから</li></ul>
+      <h5>参考にした例</h5><ul><li>MetaGPT（工程ごとに役割を分ける）</li><li>BMad Method（判断は人に残す）</li><li>Claude Code のサブエージェント（1 役 1 責任、役割ごとにモデルを選ぶ）</li></ul>
+      <p class="lead" style="font-size:12.5px">役割案: teruteru（Masa さんの依頼）。未検証の案です</p></div>`;
+    $("#drawer").classList.add("on"); $("#drawer").setAttribute("aria-hidden", "false"); return;
+  }
+  $("#dbody").innerHTML = `<h3>🤖 ${a.name}</h3><p class="lead" style="margin:0">${DEPTS[a.dept][1]} ／ ${a.d}</p>
+    <div class="jd"><h5>任せること</h5><ul>${a.allow.map(x => `<li>${x}</li>`).join("")}</ul>
+    <h5>人の承認がいること</h5><ul>${(a.approve.length ? a.approve : ["なし（結果は報告のみ）"]).map(x => `<li>${x}</li>`).join("")}</ul>
+    <h5>させないこと</h5><ul>${a.never.map(x => `<li>${x}</li>`).join("")}</ul>
+    <h5>働く場所・タイミング・報告先</h5><ul><li>${a.place}</li><li>${a.when}</li><li>報告先: ${a.report}</li></ul>
+    <h5>見込み</h5><ul><li>月 ${a.hours} 時間の節約（試算）</li><li>利用料 ${yen(a.cost)}/月（目安）</li><li>試用期間 2 週間 → 評価で本採用・配置換え</li></ul></div>`;
+  $("#drawer").classList.add("on"); $("#drawer").setAttribute("aria-hidden", "false");
+}
+
+// ---------------- step 4 ----------------
+function renderDeploy() {
+  $("#org4").innerHTML = orgHTML(true);
+  const hours = plan.reduce((s, a) => s + a.hours, 0), cost = plan.reduce((s, a) => s + a.cost, 0);
+  $("#sum4").innerHTML = `<div class="stat"><div class="v">${plan.length} 体</div><div class="l">配置した AI 社員（試用中）</div></div><div class="stat"><div class="v">月 ${hours} 時間</div><div class="l">浮きそうな時間（試算）</div></div><div class="stat"><div class="v">${yen(cost)}</div><div class="l">月の利用料の目安</div></div>`;
+  const slots = plan.filter(a => DAY[a.id]).sort((a, b) => DAY[a.id][0].localeCompare(DAY[b.id][0]));
+  $("#day").innerHTML = slots.map(a => `<div class="slot"><span class="time">${DAY[a.id][0]}</span><div class="flow"><span class="pill ai">🤖 ${a.name}</span>→<span class="pill">${short(a)}${DAY[a.id] && !/\d+:\d+/.test(a.when) ? "（" + a.when + "）" : ""}</span>→<span class="pill ${a.approve.length ? "human" : ""}">${a.approve.length ? "👤 " + a.report + " が承認" : "👤 " + a.report + " に報告"}</span></div></div>`).join("")
+    + `<div class="slot"><span class="time">18:30</span><div class="flow"><span class="pill ai">🤖 AIエージェント人事部</span>→<span class="pill">今日の働きぶりを 3 行に要約</span>→<span class="pill human">👤 経営者が読む</span></div></div>`;
+  $("#yaml").textContent = plan.map(a => `- name: ${a.name}\n  department: ${DEPTS[a.dept][1]}\n  place: ${a.place}\n  trigger: ${a.when}\n  report_to: ${a.report}\n  allow: [${a.allow.join(", ")}]\n  needs_approval: [${a.approve.join(", ")}]\n  never: [${a.never.join(", ")}]\n  trial: 14d`).join("\n");
+}
+const DAY = { comp: ["08:00"], kpi: ["09:30"], cust: ["10:00"], faq: ["11:00"], deck: ["13:00"], ec: ["14:00"], review: ["15:00"], sns: ["16:00"], inv: ["17:00"], cto: ["09:00"], devteam: ["11:30"] };
+function order(w) { const m = w.match(/(\d+):(\d+)/); return m ? +m[1] * 60 + +m[2] : w.includes("毎月") ? 500 : w.includes("毎週") ? 540 : 700; }
+function clock(w) { const m = w.match(/(\d+:\d+)/); return m ? m[1] : w.includes("毎週") ? "月 9:00" : w.includes("毎月") ? "1 日" : "随時"; }
+function short(a) { return a.allow[0] + (a.allow[1] ? "・" + a.allow[1] : ""); }
+
+// ---------------- CTO AI ----------------
+const QA = [
+  ["データを 2 つに分けたのはなぜ？", "お客さんが使う画面と、重い分析を同じ場所でやると、分析中に画面が遅くなります。保存先を分けたので、分析が増えても本体の速さは変わりません。代わりに、データを 1 日 1 回コピーする仕組みが増えました。"],
+  ["案 A と B、どっちがいい？", "案 A をおすすめします。請求ができると有料化でき、売上が立ちます。分析画面はデモ映えしますが、今の段階ではお客さんの継続に効くのは請求です。B を急ぐなら、請求は 1 体に任せて並行もできます（ただし確認の手間は増えます）。"],
+  ["テストがない 6 件、まずい？", "すぐ壊れるわけではありませんが、次に誰か（AI も含む）が直した時に、気づかず壊す危険があります。6 件のうち 2 件は請求に関わるので、案 A なら空いた 1 体にまずそこを書かせます。"],
+  ["この 1 週間、何が進んだ？", "ログインの作り直し、データの分割、請求の 6 割が進みました。並行した AI は 4 体で、重なりが 1 か所ありました。来週は重なりをなくすため、AI ごとに担当の範囲を先に決めることを提案します。"],
+];
+function renderCTO() {
+  $("#qs").innerHTML = QA.map(([q], i) => `<button class="chip" data-q="${i}">${q}</button>`).join("");
+  $("#qs").querySelectorAll("[data-q]").forEach(b => b.onclick = async () => {
+    const [q, a] = QA[+b.dataset.q]; const box = $("#answer"); box.style.display = "block";
+    box.innerHTML = `<b>👤 ${q}</b><br><span class="thinking" style="display:inline-flex;margin-top:6px"><span class="spin"></span>CTO AI が考えています…</span>`;
+    await new Promise(r => setTimeout(r, 700));
+    box.innerHTML = `<b>👤 ${q}</b><div style="margin-top:6px"><b>🤖 CTO AI：</b>${a}</div>`; });
+}
+
+// ---------------- daily report ----------------
+// [status, tasks done, key result, active window "HH-HH", tokens, needs human (text or "")]
+const DAILY = {
+  "CTO AI": ["ok", 3, "朝会で昨日の変更 23 件を 3 点に要約。請求の重なりを指摘", "9-10", 180000, "方針 A／B の判断"],
+  "開発チーム（7 役 8 体）": ["ok", 9, "割引コード・月またぎ修正など 9 件が合格。不合格 1 件はやり直し中", "10-18", 1240000, "マージ 2 件の承認"],
+  "競合調査AI": ["ok", 1, "資金調達のニュース 12 件。自社に近いのは 1 件", "8-9", 56000, ""],
+  "顧客調査AI": ["ok", 2, "商談前の企業調査 2 社分", "10-12", 64000, ""],
+  "営業資料AI": ["wait", 1, "提案資料のたたき台 1 本。お客さんへの送付は承認待ち", "13-14", 48000, "提案資料の送付"],
+  "SNS運用AI": ["ok", 1, "来週の投稿案 5 本", "16-17", 30000, "投稿の公開"],
+  "請求書処理AI": ["err", 7, "8 件中 7 件を仕訳の下書きに。1 件は読み取れずエラー", "17-18", 38000, "読み取れなかった請求書 1 件"],
+  "経費分析AI": ["idle", 0, "今日は出番なし（毎月 1 日に動く）", "", 0, ""],
+  "コードレビューAI": ["ok", 4, "レビュー 4 件。セキュリティの指摘 1 件", "11-17", 120000, ""],
+  "問い合わせAI": ["ok", 14, "問い合わせ 14 件の返事を下書き。担当者が 13 件を送信", "9-18", 210000, "返金に関わる 1 件"],
+  "商品ページAI": ["ok", 3, "新商品 3 点の説明文", "14-15", 40000, "ページの公開"],
+  "経営ダッシュボードAI": ["idle", 0, "今日は出番なし（毎週月曜に動く）", "", 0, ""],
+};
+const STL = { ok: ["ok", "✔ 稼働"], wait: ["wait", "⏳ 承認待ち"], err: ["err", "⚠ エラー"], idle: ["idle", "… 待機"] };
+function renderDaily() {
+  const now = new Date(); const ds = `${now.getMonth() + 1}/${now.getDate()}（${"日月火水木金土"[now.getDay()]}）`;
+  $("#dtitle").textContent = `デイリーレポート — ${ds}`;
+  const rows = plan.map(a => [a, DAILY[a.name] || ["ok", 1, a.d, "10-11", 20000, ""]]);
+  const active = rows.filter(r => r[1][0] !== "idle").length, done = rows.reduce((s, r) => s + r[1][1], 0);
+  const tok = rows.reduce((s, r) => s + r[1][4], 0), todo = rows.filter(r => r[1][5]);
+  const errs = rows.filter(r => r[1][0] === "err"), saved = Math.round(rows.filter(r => r[1][0] !== "idle").reduce((s, r) => s + r[0].hours, 0) / 20 * 10) / 10;
+  $("#dsum3").innerHTML = `<b>🤖 AIエージェント人事部の 3 行まとめ</b><br>・${active} 体が稼働して、タスク ${done} 件を完了。浮いた時間は約 ${saved} 時間<br>・${todo.length ? `人の判断待ちが ${todo.length} 件（${todo.map(r => r[1][5]).slice(0, 2).join("、")}${todo.length > 2 ? " ほか" : ""}）` : "人の判断待ちはなし"}<br>・${errs.length ? `${errs.map(r => r[0].name).join("・")}でエラー。内容は右の「人が見ること」に` : "エラーはなし"}`;
+  $("#dstats").innerHTML = `<div class="stat"><div class="v">${active} / ${rows.length}</div><div class="l">稼働した AI 社員</div></div><div class="stat"><div class="v">${done} 件</div><div class="l">完了したタスク</div></div><div class="stat"><div class="v">${(tok / 10000).toFixed(0)} 万</div><div class="l">使ったトークン（約 ${yen(Math.round(tok * 0.0045))}）</div></div>`;
+  $("#dtable").innerHTML = `<thead><tr><th>AI 社員</th><th>状態</th><th class="n">完了</th><th>今日の結果</th></tr></thead><tbody>${rows.map(([a, d]) => `<tr><td><b>${a.name}</b></td><td><span class="st ${STL[d[0]][0]}">${STL[d[0]][1]}</span></td><td class="n">${d[1]}</td><td style="font-size:13px;color:var(--ink2)">${d[2]}</td></tr>`).join("")}</tbody>`;
+  $("#dtodo").innerHTML = todo.length ? todo.map(([a, d]) => `<div class="todo"><b>${d[0] === "err" ? "⚠" : "⏳"} ${d[5]}</b><span style="color:var(--ink2)">${a.name} ／ 報告先: ${a.report}</span></div>`).join("") : '<p class="lead">今日はありません。</p>';
+  const lanes = rows.filter(r => r[1][3]);
+  $("#dtl").innerHTML = `<div class="tl">${lanes.map(([a, d]) => { const [h1, h2] = d[3].split("-").map(Number); const L = (h1 - 8) / 11 * 100, W = (h2 - h1) / 11 * 100; return `<span>${a.name}</span><span class="lane" title="${h1}:00〜${h2}:00"><i style="left:${L}%;width:${W}%;${d[0] === "err" ? "background:#d03b3b" : d[0] === "wait" ? "background:#c79a3a" : ""}"></i></span>`; }).join("")}<span class="axis"><span>8:00</span><span>12:00</span><span>16:00</span><span>19:00</span></span></div>`;
+}
+
+// ---------------- monthly report ----------------
+function hash(str) { let h = 7; for (const c of str) h = (h * 31 + c.charCodeAt(0)) % 9973; return h; }
+const MPLAN = {
+  up: (a) => `${a.name}を 1 体増員：依頼が多く、待ち時間が出ている`,
+  move: (a) => `${a.name}の配置換え：役に立った割合が低い。範囲を絞る`,
+  end: (a) => `${a.name}の契約終了を検討：費用対効果が 1 倍を下回った`,
+};
+function renderMonthly() {
+  const now = new Date(); const m = now.getMonth() + 1;
+  $("#mtitle").textContent = `マンスリーレポート — ${now.getFullYear()} 年 ${m} 月`;
+  const rows = plan.map(a => {
+    const d = DAILY[a.name] || ["ok", 1, "", "10-11", 20000, ""]; const h = hash(a.name);
+    const tasks = Math.max(0, Math.round(d[1] * (18 + h % 6) + (d[0] === "idle" ? 4 : 0)));
+    const saved = a.name === "SNS運用AI" ? 1 : a.name === "競合調査AI" ? Math.round(a.hours * 0.25) : Math.round(a.hours * (0.7 + (h % 5) / 10)), value = saved * 3000, roi = value / a.cost;
+    const like = a.name === "SNS運用AI" ? 15 : a.name === "競合調査AI" ? 25 : 70 + h % 25;
+    const tr = h % 3 === 0 ? "down" : "up";
+    return { a, tasks, saved, value, roi, like, tr };
+  });
+  const T = rows.reduce((s, r) => s + r.tasks, 0), S = rows.reduce((s, r) => s + r.saved, 0), C = rows.reduce((s, r) => s + r.a.cost, 0), V = S * 3000;
+  const best = [...rows].sort((x, y) => y.roi - x.roi)[0], worst = [...rows].sort((x, y) => x.roi - y.roi)[0];
+  $("#msum").innerHTML = `<b>🤖 AIエージェント人事部の今月のまとめ</b><br>・${rows.length} 体で、タスク ${T.toLocaleString()} 件を完了。浮いた時間は ${S} 時間（人に換算すると約 ${(S / 160).toFixed(1)} 人月）<br>・利用料 ${yen(C)} に対して、浮いた時間の価値は ${yen(V)}（${(V / C).toFixed(1)} 倍）<br>・いちばん効いたのは「${best.a.name}」（${best.roi.toFixed(1)} 倍）、${worst.roi < 1.5 ? "見直したいのは" : "いちばん低いのは"}「${worst.a.name}」（${worst.roi.toFixed(1)} 倍）`;
+  $("#mstats").innerHTML = `<div class="stat"><div class="v">${T.toLocaleString()}</div><div class="l">完了したタスク</div></div><div class="stat"><div class="v">${S} 時間</div><div class="l">浮いた時間</div></div><div class="stat"><div class="v">${yen(C)}</div><div class="l">利用料（月）</div></div><div class="stat"><div class="v">${(V / C).toFixed(1)} 倍</div><div class="l">費用対効果</div></div>`;
+  // daily bars (single series, so no legend; weekends lighter)
+  const days = new Date(now.getFullYear(), m, 0).getDate(); const W = 680, H = 150, pad = 26, bw = (W - pad * 2) / days;
+  const vals = [...Array(days)].map((_, i) => { const wd = new Date(now.getFullYear(), m - 1, i + 1).getDay(); const base = wd === 0 || wd === 6 ? 0.25 : 1; return Math.round((T / days) * base * (0.75 + ((i * 37) % 11) / 20) * (0.8 + i / days * 0.4)); });
+  const mx = Math.max(...vals);
+  $("#mchart").innerHTML = `<svg viewBox="0 0 ${W} ${H + 20}" width="100%" role="img" aria-label="毎日の完了タスク数（${m} 月）">
+    <line x1="${pad}" y1="${H}" x2="${W - pad}" y2="${H}" stroke="#c3c2b7" stroke-width="1"/>
+    ${vals.map((v, i) => { const wd = new Date(now.getFullYear(), m - 1, i + 1).getDay(); const h = v / mx * (H - 16); return `<rect class="${wd === 0 || wd === 6 ? "w" : "b"}" x="${pad + i * bw + 1}" y="${H - h}" width="${bw - 2}" height="${h}" rx="3"><title>${m}/${i + 1}：${v} 件</title></rect>`; }).join("")}
+    ${[1, 8, 15, 22, 29].filter(dd => dd <= days).map(dd => `<text x="${pad + (dd - 0.5) * bw}" y="${H + 14}" text-anchor="middle">${m}/${dd}</text>`).join("")}
+    <text x="${pad}" y="10">${mx} 件</text></svg>`;
+  $("#mtable").innerHTML = `<thead><tr><th>AI 社員</th><th class="n">タスク</th><th class="n">浮いた時間</th><th class="n">利用料</th><th class="n">費用対効果</th><th class="n">いいね率</th></tr></thead><tbody>${rows.map(r => `<tr><td><b>${r.a.name}</b></td><td class="n">${r.tasks}</td><td class="n">${r.saved} 時間</td><td class="n">${yen(r.a.cost)}</td><td class="n"><span class="roi ${r.roi < 1 ? "low" : ""}">${r.roi.toFixed(1)} 倍</span> <span class="trend ${r.tr}">${r.tr === "up" ? "↑" : "↓"}</span></td><td class="n">${r.like}%</td></tr>`).join("")}</tbody>`;
+  const props = [];
+  rows.forEach(r => { if (r.roi < 1 || r.like < 20) props.push(["end", r.a]); else if (r.like < 40) props.push(["move", r.a]); else if (r.roi > 4 && r.tr === "up") props.push(["up", r.a]); });
+  $("#mplan").innerHTML = props.slice(0, 4).map(([k, a]) => `<div class="todo"><b>${k === "up" ? "➕" : k === "move" ? "↔" : "✖"} ${MPLAN[k](a)}</b><span style="color:var(--ink2)">→ ⑧人事評価でお伺いします</span></div>`).join("") || '<p class="lead">今月は提案なし。今の体制で続けます。</p>';
+  const appr = Math.round(T * 0.06), rej = Math.round(appr * 0.12), err = Math.round(T * 0.01);
+  $("#mhuman").innerHTML = `<div class="hbar"><span>承認した</span><span class="track"><span class="fill" style="display:block;width:${(appr - rej) / appr * 100}%"></span></span><span>${appr - rej}</span></div>
+    <div class="hbar"><span>止めた（却下）</span><span class="track"><span class="fill" style="display:block;width:${rej / appr * 100}%"></span></span><span>${rej}</span></div>
+    <div class="hbar"><span>エラーの対応</span><span class="track"><span class="fill" style="display:block;width:${err / appr * 100}%"></span></span><span>${err}</span></div>
+    <p class="lead" style="font-size:12.5px;margin:6px 0 0">止めた記録は「人の関所がちゃんと働いた」証拠として残します</p>`;
+}
+
+// ---------------- task feedback ----------------
+// base ratings over the 2-week trial (demo values): [up, down]
+const RATE = { "CTO AI": [18, 2], "バックエンド実装AI・A": [9, 3], "バックエンド実装AI・B": [10, 2], "コードレビューAI": [14, 1], "リリース判定AI": [6, 0],
+  "セキュリティ監査AI": [5, 1], "競合調査AI": [3, 9], "SNS運用AI": [2, 11], "顧客調査AI": [12, 3], "営業資料AI": [8, 4], "請求書処理AI": [11, 1], "経費分析AI": [2, 0],
+  "問い合わせAI": [20, 4], "商品ページAI": [7, 3], "経営ダッシュボードAI": [3, 1] };
+const FEED = [
+  ["CTO AI", "朝会: 昨日の開発の要点", "ログインの作り直し・データの分割・請求の重なりを 3 点で解説。次の方針は案 A を提案", "今日 9:02"],
+  ["競合調査AI", "今朝の市場ウォッチ", "資金調達のニュース 12 件。うち自社に近いものは 1 件", "今日 8:05"],
+  ["バックエンド実装AI・B", "請求 API に「割引コード」を追加", "テスト 14 件すべて合格。レビューで指摘 1 件 → 修正済み", "昨日 17:40"],
+  ["バックエンド実装AI・A", "請求 API の「月またぎ」不具合の修正", "原因は日付の境目の計算。再発防止のテストを追加", "昨日 16:10"],
+  ["コードレビューAI", "ログイン画面の変更をレビュー", "指摘 3 件（うち 1 件はセキュリティ）。重点を 3 行で説明", "昨日 15:20"],
+  ["SNS運用AI", "来週の投稿案 5 本", "新機能の告知を中心に 5 本。ハッシュタグ案つき", "昨日 14:00"],
+  ["顧客調査AI", "商談前の企業調査（架空の A 社）", "事業・最近のニュース・決裁者候補を 1 枚にまとめた", "昨日 11:30"],
+  ["請求書処理AI", "請求書 8 件の読み取り", "8 件中 8 件を仕訳の下書きに。1 件は金額の確認を依頼", "昨日 10:15"],
+];
+const AI_JUDGE = [
+  ["up", "要点 3 つ・理由・次の方針がそろっていて、社長が判断に使える"],
+  ["down", "12 件中、自社に関係があるのは 1 件だけ。絞り込みが足りない"],
+  ["up", "受け入れ条件をすべて満たし、テスト 14 件が合格。指摘も直してある"],
+  ["up", "原因の説明と、再発を防ぐテストがそろっている"],
+  ["up", "セキュリティの指摘を含め、重点がわかる言葉で説明されている"],
+  ["down", "過去の投稿と似た案が 3 本。新しさが足りない"],
+  ["up", "事業・最近のニュース・決裁者候補がそろっていて、商談の準備に使える"],
+  ["up", "8 件すべて下書き済み。確認が要る 1 件を正しく人に回した"],
+];
+let fmode = "human";
+function effVote(i) { const h = feedVote[i], a = AI_JUDGE[i] && AI_JUDGE[i][0]; return fmode === "human" ? (h ? [h, "人"] : null) : fmode === "ai" ? [a, "AI"] : (h ? [h, "人"] : [a, "AI"]); }
+function tally() { const t = {}; FEED.forEach((f, i) => { const v = effVote(i); if (!v) return; const x = t[f[0]] || { up: 0, down: 0, h: 0, ai: 0 }; v[0] === "up" ? x.up++ : x.down++; v[1] === "人" ? x.h++ : x.ai++; t[f[0]] = x; }); return t; }
+function rateOf(name) { const b = RATE[name] || [0, 0]; const v = tally()[name] || { up: 0, down: 0, h: 0, ai: 0 }; const up = b[0] + v.up, down = b[1] + v.down; return { up, down, n: up + down, pct: up + down ? Math.round(up / (up + down) * 100) : null, ai: v.ai, h: v.h }; }
+function renderFeed() {
+  const names = new Set(plan.map(a => a.name)); const hasDev = names.has(DEVTEAM.name);
+  const items = FEED.map((f, i) => [...f, i]).filter(f => names.has(f[0]) || (hasDev && DEVTEAM.roles.some(x => x[0] === f[0])));
+  const ev = items.map(f => effVote(f[4])).filter(Boolean);
+  const nh = ev.filter(v => v[1] === "人").length, na = ev.filter(v => v[1] === "AI").length, ups = ev.filter(v => v[0] === "up").length;
+  $("#fsum").innerHTML = `<div class="stat"><div class="v">${items.length - ev.length}</div><div class="l">まだ評価していないタスク</div></div><div class="stat"><div class="v">${nh} ／ ${na}</div><div class="l">人の評価 ／ AIエージェント人事部長の評価</div></div><div class="stat"><div class="v">${ev.length ? Math.round(ups / ev.length * 100) + "%" : "—"}</div><div class="l">「いいね」の割合</div></div>`;
+  $("#feed").innerHTML = items.map(f => { const e = effVote(f[4]); const v = e && e[0]; const j = AI_JUDGE[f[4]]; return `<div class="fitem"><div><div class="who">🤖 ${f[0]}</div><div class="what">${f[1]}</div><div class="res">${f[2]}</div><div class="when">${f[3]} ／ この AI のいいね率 <b>${rateOf(f[0]).pct ?? "—"}%</b>（${rateOf(f[0]).n} 件）</div>${fmode !== "human" ? `<div class="aij"><b>🤖 AIエージェント人事部長：${j[0] === "up" ? "👍 いいね" : "👎 イマイチ"}</b> — ${j[1]}</div>` : ""}</div>
+    <div class="rate"><button class="up" data-v="up" data-f="${f[4]}" aria-pressed="${v === "up"}" ${fmode === "ai" ? "disabled" : ""}>👍 いいね</button><button class="down" data-v="down" data-f="${f[4]}" aria-pressed="${v === "down"}" ${fmode === "ai" ? "disabled" : ""}>👎 イマイチ</button>${e ? `<span class="src">${e[1] === "AI" ? "🤖 AIエージェント人事部長の評価" : "👤 人の評価"}</span>` : ""}</div></div>`; }).join("") || '<p class="lead">評価を待っているタスクはありません。</p>';
+  $("#feed").querySelectorAll("[data-f]").forEach(b => b.onclick = () => {
+    const i = +b.dataset.f, now = b.dataset.v;
+    if (feedVote[i] === now) delete feedVote[i]; else feedVote[i] = now;
+    renderFeed();
+    const card = $("#feed").querySelectorAll(".fitem")[[...items].findIndex(x => x[4] === i)]; if (card) card.classList.add("flash");
+  });
+}
+const feedVote = {};
+
+document.addEventListener("click", e => { const c = e.target.closest("#fmode .chip"); if (!c) return; fmode = c.dataset.m;
+  document.querySelectorAll("#fmode .chip").forEach(x => x.setAttribute("aria-pressed", String(x === c))); renderFeed(); });
+
+// ---------------- evaluation ----------------
+const EVAL = [
+  ["CTO AI", "朝会 10 回", "社長の評価 4.6 / 5", "—", "—", "keep", "本採用", "毎朝の解説が判断に使われている"],
+  ["バックエンド実装AI・A", "12 件", "合格 92%・一発 75%", "84,000", "0.4 回", "move", "配置換え", "難しい作業だけに回す（定型は B の方が合格 1 件あたり半分）"],
+  ["バックエンド実装AI・B", "12 件", "合格 83%・一発 58%", "41,000", "0.9 回", "keep", "本採用（定型作業）", "やり直しは多いが、合格 1 件あたりは A の半分"],
+  ["コードレビューAI", "18 件", "指摘の的中 88%", "31,000", "—", "keep", "本採用", "後から見つかった不具合 0 件"],
+  ["リリース判定AI", "9 件", "合格判定 9 / 9", "22,000", "—", "na", "判定不可", "10 件未満。あと 1 件で判定できる"],
+  ["セキュリティ監査AI", "7 件", "重大な指摘 1 件", "120,000", "—", "na", "判定不可", "10 件未満。件数がたまるまで続ける"],
+  ["競合調査AI", "14 日", "役に立った報告 3 / 14", "56,000", "—", "move", "配置換え", "毎日 → 週 2 回にして、自社に近い領域だけに絞る"],
+  ["SNS運用AI", "14 日", "投稿案の採用 12%", "95,000", "—", "end", "契約終了の候補", "採用された投稿 1 本あたりのコストが高い"],
+];
+const VCLS = { keep: ["v-keep", "✔"], move: ["v-move", "↔"], end: ["v-end", "✖"], na: ["v-na", "…"] };
+let evmode = "h"; const evdone = {};
+function renderEval() {
+  const names = new Set(plan.map(a => a.name));
+  const hasDev = names.has(DEVTEAM.name);
+  const rows = EVAL.filter(r => names.has(r[0]) || (hasDev && DEVTEAM.roles.some(x => x[0] === r[0]))).map(r => {
+    const u = rateOf(r[0]); const x = [...r];
+    if (u.pct !== null && u.n >= 5 && u.pct < 40 && x[5] === "keep") { x[5] = "move"; x[6] = "様子見・配置換え"; x[7] = `使った人のいいね率が ${u.pct}% に下がった`; }
+    if (u.pct !== null && u.n >= 5 && u.pct < 25 && x[5] === "move") { x[5] = "end"; x[6] = "契約終了の候補"; x[7] = `いいね率 ${u.pct}%。${r[7]}`; }
+    x.u = u; return x; });
+  $("#evtable").innerHTML = `<thead><tr><th>AI 社員</th><th>件数</th><th>品質</th><th class="n">合格 1 件あたりのトークン</th><th class="n">やり直し</th><th>タスクの評価（人＋AIエージェント人事部長）</th><th>AIエージェント人事部長 の判断</th></tr></thead><tbody>${rows.map(r => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td class="uscore">${r.u.pct === null ? "—" : `👍 ${r.u.pct}%<span class="meter2" aria-hidden="true"><i style="width:${r.u.pct}%"></i></span><div style="font-size:11.5px;color:var(--muted)">${r.u.up} いいね ／ ${r.u.down} イマイチ${r.u.ai ? `（うち AIエージェント人事部長 ${r.u.ai} 件）` : ""}</div>`}</td><td><span class="verdict ${VCLS[r[5]][0]}">${VCLS[r[5]][1]} ${r[6]}</span><div style="font-size:12px;color:var(--ink2);margin-top:3px">${r[7]}</div></td></tr>`).join("")}</tbody>`;
+  const asks = rows.filter(r => r[5] === "move" || r[5] === "end");
+  if (evmode === "a") asks.forEach(r => evdone[r[0]] = evdone[r[0]] || "AI が判断：実行");
+  $("#memos").innerHTML = asks.map(r => `<div class="memo"><h4>${VCLS[r[5]][1]} ${r[0]}：${r[6]}</h4>
+    <dl><dt>何を</dt><dd>${r[5] === "end" ? "役割を止めて、別の場所に移す（削除はしない）" : r[7]}</dd><dt>なぜ</dt><dd>${r[2]} ／ 合格 1 件あたり ${r[3]} トークン ／ いいね率 ${r.u.pct ?? "—"}%（${r.u.n} 件）</dd>
+    <dt>影響</dt><dd>${r[5] === "end" ? "この仕事は人か別の AI 社員に戻す。月のコストが下がる" : "担当の範囲が変わる。品質は変わらない見込み"}</dd><dt>戻し方</dt><dd>${r[5] === "end" ? "移した役割ファイルを元の場所に戻す" : "割り当ての設定を元に戻す"}</dd></dl>
+    <div class="row">${evdone[r[0]] ? `<span class="done-stamp" style="color:var(--good-text)">✔ ${evdone[r[0]]}</span>` : `<button class="btn" data-ok="${r[0]}">承認する</button><button class="btn ghost" data-ng="${r[0]}">見送る</button>`}</div></div>`).join("") || '<p class="lead">お伺いはありません。</p>';
+  $("#memos").querySelectorAll("[data-ok]").forEach(b => b.onclick = () => { evdone[b.dataset.ok] = "人が判断：承認"; renderEval(); });
+  $("#memos").querySelectorAll("[data-ng]").forEach(b => b.onclick = () => { evdone[b.dataset.ng] = "人が判断：見送り"; renderEval(); });
+}
+document.addEventListener("click", e => { const c = e.target.closest("#evmode .chip"); if (!c) return; evmode = c.dataset.m;
+  document.querySelectorAll("#evmode .chip").forEach(x => x.setAttribute("aria-pressed", String(x === c))); for (const k in evdone) delete evdone[k]; renderEval(); });
+
+// ---------------- wiring ----------------
+document.querySelectorAll(".preset").forEach(b => b.onclick = () => { const p = PRESETS[b.dataset.p]; $("#desc").value = p.desc; sel.depts = new Set(p.depts); sel.tools = new Set(p.tools); renderInputs(); });
+$("#go1").onclick = async () => { if (!sel.depts.size) { alert("部署を 1 つ以上選んでください"); return; } $("#go1").disabled = true; await think($("#th1"), 1100); $("#go1").disabled = false; renderTasks(); step(2); };
+$("#go2").onclick = () => { makePlan(); renderPick(); step(3); };
+$("#go3").onclick = () => { plan = cands.filter(a => chosen.has(a.id)); renderDeploy(); step(4); };
+$("#go4").onclick = () => { renderDaily(); step(5); };
+$("#go45").onclick = () => { renderMonthly(); step(6); };
+$("#go56").onclick = () => { renderFeed(); step(7); };
+$("#jumpcto").onclick = () => { renderCTO(); step(9); };
+$("#go6").onclick = () => { renderEval(); step(8); };
+$("#go7").onclick = () => { renderCTO(); step(9); };
+document.querySelectorAll("[data-back]").forEach(b => b.onclick = () => step(+b.dataset.back.slice(1)));
+$("#restart").onclick = () => { $("#desc").value = ""; step(1); };
+document.addEventListener("click", e => {
+  const j = e.target.closest("[data-jd]"); if (j) { e.stopPropagation(); openJD(j.dataset.jd); return; }
+  const c = e.target.closest(".agent"); if (!c || !c.dataset.id) return;
+  if (c.closest("#org")) { const id = c.dataset.id; chosen.has(id) ? chosen.delete(id) : chosen.add(id); renderPick(); }
+  else if (c.closest("#org4")) openJD(c.dataset.id);
+});
+document.addEventListener("keydown", e => { const c = e.target.closest && e.target.closest(".agent"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); c.click(); } if (e.key === "Escape") $("#x").click(); });
+$("#x").onclick = () => { $("#drawer").classList.remove("on"); $("#drawer").setAttribute("aria-hidden", "true"); };
+function showLP(on) { document.body.classList.toggle("on-lp", on); scrollTo({ top: 0, behavior: "smooth" }); }
+document.addEventListener("click", e => {
+  const st = e.target.closest("[data-start]"); if (st) { showLP(false); step(1); return; }
+  const sc = e.target.closest("[data-scroll]"); if (sc) { document.getElementById(sc.dataset.scroll).scrollIntoView({ behavior: "smooth" }); return; }
+  if (e.target.closest(".logo")) showLP(true);
+});
+renderInputs();
+</script>
+</body>
+</html>
