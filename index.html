@@ -131,6 +131,12 @@
   .roi { font-variant-numeric:tabular-nums; font-weight:800; } .roi.low { color:#a02727; }
   #mchart svg rect.b { fill:var(--blue); } #mchart svg rect.b:hover { fill:#1c5fb0; } #mchart svg rect.w { fill:#c9d8ee; }
   #mchart svg text { font-size:11px; fill:#8a91a3; }
+  #laneCard { grid-column:1 / -1; }
+  .lanes-legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--ink2); margin:8px 0 6px; }
+  .lanes-legend .lg { display:inline-block; width:18px; height:8px; border-radius:4px; margin-right:5px; vertical-align:middle; }
+  .lg.t { background:#2a78d6; } .lg.e { background:#8db8ec; } .lg.ar { background:none; border-top:2px solid #1d2433; height:0; border-radius:0; }
+  #lanes svg text { font-size:11px; fill:#5a6275; } #lanes svg text.lab { fill:#1d2433; font-weight:700; }
+  #lanes svg rect.t { fill:#2a78d6; } #lanes svg rect.e { fill:#8db8ec; } #lanes svg rect.bar:hover { opacity:.8; }
   .flash { animation:flash 1s; } @keyframes flash { 0% { background:#fff8db; } 100% { background:transparent; } }
   .done-stamp { font-weight:800; font-size:13px; }
   body.on-lp main, body.on-lp .steps, body.on-lp #jumpcto { display:none; }
@@ -292,7 +298,9 @@
     <p class="lead">それぞれの AI 社員を、働く場所・報告先・動くタイミングつきで配置しました。最初の 2 週間は試用期間です。</p>
     <div class="sum" id="sum4"></div>
     <div class="two">
-      <div class="card"><b>AI 社員チームの 1 日</b><div class="day" id="day"></div></div>
+      <div class="card" id="laneCard"><b>AI 社員チームの 1 日 — 同時に並行して動く</b>
+        <div class="lanes-legend"><span><i class="lg t"></i>時刻で動く</span><span><i class="lg e"></i>出来事で動く（問い合わせ・請求書が届いた等）</span><span><i class="lg ar"></i>バトンを渡す（開発チーム）</span><span>👤 人の承認</span></div>
+        <div id="lanes"></div><div id="lanesNow" class="lead" style="font-size:13px;margin:6px 0 0"></div></div>
       <div class="card"><b>人がやること</b>
         <ul style="line-height:1.9;font-size:14.5px;padding-left:1.1em">
           <li>朝、AIエージェント人事部の<b>3 行の要約</b>を読む</li>
@@ -545,9 +553,7 @@ function renderDeploy() {
   $("#org4").innerHTML = orgHTML(true);
   const hours = plan.reduce((s, a) => s + a.hours, 0), cost = plan.reduce((s, a) => s + a.cost, 0);
   $("#sum4").innerHTML = `<div class="stat"><div class="v">${plan.length} 体</div><div class="l">配置した AI 社員（試用中）</div></div><div class="stat"><div class="v">月 ${hours} 時間</div><div class="l">浮きそうな時間（試算）</div></div><div class="stat"><div class="v">${yen(cost)}</div><div class="l">月の利用料の目安</div></div>`;
-  const slots = plan.filter(a => DAY[a.id]).sort((a, b) => DAY[a.id][0].localeCompare(DAY[b.id][0]));
-  $("#day").innerHTML = slots.map(a => `<div class="slot"><span class="time">${DAY[a.id][0]}</span><div class="flow"><span class="pill ai">🤖 ${a.name}</span>→<span class="pill">${short(a)}${DAY[a.id] && !/\d+:\d+/.test(a.when) ? "（" + a.when + "）" : ""}</span>→<span class="pill ${a.approve.length ? "human" : ""}">${a.approve.length ? "👤 " + a.report + " が承認" : "👤 " + a.report + " に報告"}</span></div></div>`).join("")
-    + `<div class="slot"><span class="time">18:30</span><div class="flow"><span class="pill ai">🤖 AIエージェント人事部</span>→<span class="pill">今日の働きぶりを 3 行に要約</span>→<span class="pill human">👤 経営者が読む</span></div></div>`;
+  renderLanes();
   $("#yaml").textContent = plan.map(a => `- name: ${a.name}\n  department: ${DEPTS[a.dept][1]}\n  place: ${a.place}\n  trigger: ${a.when}\n  report_to: ${a.report}\n  allow: [${a.allow.join(", ")}]\n  needs_approval: [${a.approve.join(", ")}]\n  never: [${a.never.join(", ")}]\n  trial: 14d`).join("\n");
 }
 const DAY = { comp: ["08:00"], kpi: ["09:30"], cust: ["10:00"], faq: ["11:00"], deck: ["13:00"], ec: ["14:00"], review: ["15:00"], sns: ["16:00"], inv: ["17:00"], cto: ["09:00"], devteam: ["11:30"] };
@@ -570,6 +576,70 @@ function renderCTO() {
     await new Promise(r => setTimeout(r, 700));
     box.innerHTML = `<b>👤 ${q}</b><div style="margin-top:6px"><b>🤖 CTO AI：</b>${a}</div>`; });
 }
+
+// ---------------- parallel swimlanes (step 4) ----------------
+// type t = time-triggered, e = event-triggered; bars in hours (8.0-19.0)
+const LANES = {
+  comp: [["t", 8.0, 8.6]],
+  kpi: [["t", 9.5, 10.0]],
+  cto: [["t", 9.0, 9.5], ["e", 14.0, 14.4]],
+  cust: [["e", 9.7, 10.2], ["e", 13.3, 13.9], ["e", 15.5, 16.0]],
+  deck: [["e", 10.4, 11.5], ["e", 16.0, 16.9]],
+  sns: [["t", 16.0, 16.6]],
+  inv: [["e", 9.0, 9.3], ["e", 11.2, 11.5], ["e", 17.0, 17.4]],
+  exp: [],
+  faq: [["e", 9.2, 9.4], ["e", 10.0, 10.3], ["e", 11.0, 11.3], ["e", 13.0, 13.4], ["e", 14.5, 14.8], ["e", 16.2, 16.5], ["e", 17.5, 17.8]],
+  ec: [["e", 14.0, 15.0]],
+  review: [["e", 11.0, 11.6], ["e", 15.2, 15.8]],
+};
+const DEVLANES = [
+  ["受け入れ条件AI", [["e", 9.6, 10.0], ["e", 13.9, 14.2]]],
+  ["実装AI・A", [["e", 10.0, 12.4], ["e", 14.2, 16.3]]],
+  ["実装AI・B", [["e", 10.0, 11.7], ["e", 14.2, 15.8]]],
+  ["レビュー・テスト・セキュリティ", [["e", 12.5, 13.5], ["e", 16.4, 17.3]]],
+  ["リリース判定AI", [["e", 13.5, 13.8], ["e", 17.3, 17.5]]],
+];
+function renderLanes() {
+  const rows = [];
+  plan.forEach(a => {
+    if (a.id === "devteam") DEVLANES.forEach(([n, b]) => rows.push({ name: "　" + n, bars: b, dev: true }));
+    else rows.push({ name: a.name, bars: LANES[a.id] || [["e", 10, 11]] });
+  });
+  rows.push({ name: "AIエージェント人事部", bars: [["t", 18.4, 18.8]] });
+  const W = 700, L = 168, R = 12, rh = 22, top = 8, H = top + rows.length * rh + 22;
+  const x = h => L + (h - 8) / 11 * (W - L - R);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="AI 社員ごとの今日の稼働（同時並行）" id="laneSvg">`;
+  for (let h = 8; h <= 19; h++) svg += `<line x1="${x(h)}" y1="${top}" x2="${x(h)}" y2="${H - 20}" stroke="#eef0f5"/>` + (h % 2 === 0 ? `<text x="${x(h)}" y="${H - 6}" text-anchor="middle">${h}:00</text>` : "");
+  rows.forEach((r, k) => {
+    const y = top + k * rh;
+    svg += `<text class="${r.dev ? "" : "lab"}" x="${L - 8}" y="${y + 15}" text-anchor="end">${r.name}</text>`;
+    if (!r.bars.length) svg += `<text x="${x(8) + 4}" y="${y + 15}">今日は待機（毎月 1 日に動く）</text>`;
+    r.bars.forEach(([t, a, b]) => svg += `<rect class="bar ${t}" x="${x(a)}" y="${y + 5}" width="${Math.max(3, x(b) - x(a))}" height="12" rx="4"><title>${r.name.trim()}：${fmt(a)}〜${fmt(b)}（${t === "t" ? "時刻で動く" : "出来事で動く"}）</title></rect>`);
+  });
+  // handoff arrows inside the dev team (the only real relay)
+  const di = rows.findIndex(r => r.dev);
+  if (di >= 0) {
+    svg += `<defs><marker id="ah" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#1d2433"/></marker></defs>`;
+    for (let c = 0; c < 2; c++) {
+      const yy = k => top + (di + k) * rh + 11;
+      const seg = (k1, k2) => { const a = rows[di + k1].bars[c], b = rows[di + k2].bars[c]; svg += `<path d="M${x(a[2])},${yy(k1)} C${x(a[2]) + 10},${yy(k1)} ${x(b[1]) - 10},${yy(k2)} ${x(b[1]) - 1},${yy(k2)}" fill="none" stroke="#1d2433" stroke-width="1.4" marker-end="url(#ah)"/>`; };
+      seg(0, 1); seg(0, 2); seg(1, 3); seg(2, 3); seg(3, 4);
+      const end = rows[di + 4].bars[c];
+      svg += `<text x="${x(end[2]) + 4}" y="${top + (di + 4) * rh + 15}">👤 人が承認</text>`;
+    }
+  }
+  svg += `<line id="nowLine" x1="0" y1="${top}" x2="0" y2="${H - 20}" stroke="#d03b3b" stroke-width="1" visibility="hidden"/></svg>`;
+  $("#lanes").innerHTML = svg;
+  const all = rows.flatMap(r => r.bars.map(b => ({ r: r.name.trim(), a: b[1], b: b[2] })));
+  const running = t => all.filter(z => z.a <= t && t < z.b);
+  let best = [0, 8]; for (let t = 8; t < 19; t += 0.05) { const n = running(t).length; if (n > best[0]) best = [n, t]; }
+  const base = `最大 <b>${best[0]} 体</b>が同時に稼働（${fmt(best[1])} ごろ）。本当にバトンを渡すのは開発チームの工程だけで、ほかは時刻や出来事ごとにそれぞれ動きます。グラフに乗せると、その時刻に動いている AI が出ます。`;
+  $("#lanesNow").innerHTML = base;
+  const el = $("#laneSvg");
+  el.onmousemove = e => { const bb = el.getBoundingClientRect(); const px = (e.clientX - bb.left) / bb.width * W; if (px < L) return; const t = 8 + (px - L) / (W - L - R) * 11; const ln = $("#nowLine"); ln.setAttribute("x1", px); ln.setAttribute("x2", px); ln.setAttribute("visibility", "visible"); const on = running(t); $("#lanesNow").innerHTML = `<b>${fmt(t)}</b>：${on.length} 体が同時に稼働 — ${on.map(z => z.r).join("、") || "なし"}`; };
+  el.onmouseleave = () => { $("#nowLine").setAttribute("visibility", "hidden"); $("#lanesNow").innerHTML = base; };
+}
+function fmt(h) { const m = Math.round((h % 1) * 60); return `${Math.floor(h)}:${String(m === 60 ? 0 : m).padStart(2, "0")}`; }
 
 // ---------------- daily report ----------------
 // [status, tasks done, key result, active window "HH-HH", tokens, needs human (text or "")]
